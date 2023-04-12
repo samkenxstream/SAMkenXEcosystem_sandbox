@@ -57,6 +57,24 @@ describe('sandbox', function () {
         });
     });
 
+    it('should not be able to mutate Error.prepareStackTrace', function (done) {
+        Sandbox.createContext(function (err, ctx) {
+            if (err) { return done(err); }
+            ctx.on('error', done);
+
+            ctx.execute(`
+                var assert = require('assert');
+                var fn = Error.prepareStackTrace;
+
+                Error.prepareStackTrace = () => {};
+                assert.equal(Error.prepareStackTrace, fn);
+
+                var err = new Error('Test');
+                assert.equal(err.stack.split('\\n')[0], 'Error: Test');
+            `, done);
+        });
+    });
+
     it('should not have access to global properties', function (done) {
         Sandbox.createContext({ debug: true }, function (err, ctx) {
             if (err) { return done(err); }
@@ -117,6 +135,78 @@ describe('sandbox', function () {
 
                 expect(execution).to.have.property('id', 'my-test-id');
                 done();
+            });
+        });
+    });
+
+    it('should create context fleet using templates', function (done) {
+        Sandbox.createContextFleet({
+            grpc: '',
+            websocket: ''
+        }, {}, (err, fleet) => {
+            if (err) { return done(err); }
+
+            expect(fleet).to.be.an('object');
+            expect(fleet.getContext).to.be.a('function');
+            expect(fleet.disposeAll).to.be.a('function');
+
+            done();
+        });
+    });
+
+    it('should return the correct context for the given template name', function (done) {
+        Sandbox.createContextFleet({
+            grpc: `
+                function initializeExecution () {
+                    return {
+                        request: {
+                            type: 'grpc-request'
+                        },
+                        response: {
+                            type: 'grpc-response'
+                        }
+                    }
+                };
+
+                function chaiPlugin (chai) {
+                    const Assertion = chai.Assertion;
+
+                    Assertion.addProperty('grpcRequest', function () {
+                      this.assert(this._obj.type === 'grpc-request',
+                        'expecting a gRPC request but got #{this}',
+                        'not expecting a gRPC request object');
+                    });
+
+                    Assertion.addProperty('grpcResponse', function () {
+                        this.assert(this._obj.type === 'grpc-response',
+                          'expecting a gRPC response but got #{this}',
+                          'not expecting a gRPC response object');
+                      });
+                }
+
+                module.exports = { initializeExecution, chaiPlugin };
+            `,
+            websocket: ''
+        }, {}, { debug: true }, (err, fleet) => {
+            if (err) { return done(err); }
+
+            fleet.getContext('grpc', (err, ctx) => {
+                if (err) { return done(err); }
+
+                ctx.on('error', done);
+
+                ctx.on('execution.assertion', (_, assertions) => {
+                    assertions.forEach((a) => {
+                        expect(a.passed).to.be.true;
+                    });
+                });
+
+                ctx.execute(`
+                    pm.test('Should be gRPC request and response', () => {
+                        pm.request.to.be.grpcRequest;
+                        pm.response.to.be.grpcResponse;
+                    });
+                `, done);
             });
         });
     });

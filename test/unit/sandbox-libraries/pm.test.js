@@ -1,4 +1,4 @@
-const CookieStore = require('tough-cookie').Store;
+const CookieStore = require('@postman/tough-cookie').Store;
 
 describe('sandbox library - pm api', function () {
     this.timeout(1000 * 60);
@@ -561,7 +561,11 @@ describe('sandbox library - pm api', function () {
 
             context.execute(`
                 var jar = pm.cookies.jar();
-                jar.get("http://example.com/", 'a', function () {})
+                jar.get("http://example.com/", 'a', function () {});
+
+                // second call for testing:
+                // https://github.com/postmanlabs/postman-app-support/issues/11064
+                jar.get("https://example.com/", 'a', function () {});
             `, {
                 context: { cookies: [] },
                 id: executionId
@@ -571,7 +575,7 @@ describe('sandbox library - pm api', function () {
                 var methodArgs;
 
                 expect(executionError).to.not.have.been.called;
-                expect(executionCookies).to.have.been.calledOnce;
+                expect(executionCookies).to.have.been.calledTwice;
 
                 // assert for findCookies event
                 expect(executionCookies.getCall(0).args).to.have.lengthOf(4);
